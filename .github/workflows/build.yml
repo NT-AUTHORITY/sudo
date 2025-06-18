@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  SOLUTION_FILE_PATH: sudo.sln
+  BUILD_CONFIGURATION: Release
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Restore NuGet packages
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Build x64
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Get short SHA
+      id: slug
+      run: echo "::set-output name=sha8::$(git rev-parse --short=8 HEAD)"
+
+    - name: Create artifact directory
+      run: |
+        mkdir artifact
+        copy x64\${{env.BUILD_CONFIGURATION}}\sudo.exe artifact\
+        copy sudo\help.json artifact\
+        copy sudo\sudo_config.json artifact\
+
+    - name: Create ZIP archive
+      run: Compress-Archive -Path artifact\* -DestinationPath sudo-amd64-${{ steps.slug.outputs.sha8 }}.zip
+
+    - name: Upload ZIP artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sudo-amd64-${{ steps.slug.outputs.sha8 }}
+        path: sudo-amd64-${{ steps.slug.outputs.sha8 }}.zip
+        if-no-files-found: error
